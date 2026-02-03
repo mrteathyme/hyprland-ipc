@@ -14,13 +14,14 @@ impl Dispatcher {
     pub fn new() -> Result<Self, Error> {
         let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE")
             .map_err(|_err| Error::NoInstanceSignature)?;
-
+        let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
+            .map_err(|_| Error::NoInstanceSignature)?;
         Ok(Self {
-            socket_path: format!("/tmp/hypr/{his}/.socket.sock"),
+            socket_path: format!("{xdg_runtime}/hypr/{his}/.socket.sock"),
         })
     }
 
-    async fn call_command(&self, command: &str) -> Result<String, Error> {
+    pub async fn call_command(&self, command: &str) -> Result<String, Error> {
         let mut socket = UnixStream::connect(&self.socket_path).await?;
 
         socket.write_all(command.as_bytes()).await?;
@@ -36,17 +37,18 @@ impl Dispatcher {
         }
     }
 
-    async fn call_command_json<T: DeserializeOwned>(&self, command: &str) -> Result<T, Error> {
+
+    pub async fn call_command_json<T: DeserializeOwned>(&self, command: &str) -> Result<T, Error> {
         let mut socket = UnixStream::connect(&self.socket_path).await?;
 
         socket.write_all(command.as_bytes()).await?;
 
         let mut response = String::new();
-
         socket.read_to_string(&mut response).await?;
 
         serde_json::from_str(&response).map_err(|_err| Error::MalformedInput)
     }
+
 
     pub async fn clients(&self) -> Result<Vec<Client>, Error> {
         self.call_command_json("j/clients").await
@@ -79,6 +81,7 @@ impl Dispatcher {
     }
 }
 
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Client {
     pub address: String,
@@ -88,6 +91,7 @@ pub struct Client {
     pub size: [u32; 2],
     pub workspace: Workspace,
     pub floating: bool,
+    pub pseudo: bool,
     pub monitor: i64,
     pub class: String,
     pub title: String,
@@ -98,14 +102,24 @@ pub struct Client {
     pub pid: i32,
     pub xwayland: bool,
     pub pinned: bool,
-    pub fullscreen: bool,
-    #[serde(rename = "fullscreenMode")]
-    pub fullscreen_mode: i64,
-    #[serde(rename = "fakeFullscreen")]
-    pub fake_fullscreen: bool,
+    pub fullscreen: i64,
+    #[serde(rename = "fullscreenClient")]
+    pub fullscreen_client: i64,
     pub grouped: Vec<String>,
+    pub tags: Vec<String>,
     pub swallowing: String,
+    #[serde(rename = "focusHistoryID")]
+    pub focus_history_id: i64,
+    #[serde(rename = "inhibitingIdle")]
+    pub inhibiting_idle: bool,
+    #[serde(rename = "xdgTag")]
+    pub xdg_tag: String,
+    #[serde(rename = "xdgDescription")]
+    pub xdg_description: String,
+    #[serde(rename = "contentType")]
+    pub content_type: String,
 }
+
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Workspace {

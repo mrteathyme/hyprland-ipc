@@ -46,6 +46,11 @@ pub enum Event {
         workspace_name: String,
         mon_name: String,
     },
+    ActiveSpecialV2 {
+        workspace_id: String,
+        workspace_name: String,
+        mon_name: String
+    },
     ActiveLayout {
         keyboard_name: String,
         layout_name: String,
@@ -90,6 +95,10 @@ pub enum Event {
     },
     WindowTitle {
         window_address: String,
+    },
+    WindowTitleV2 {
+        window_address: String,
+        window_title: String
     },
     IgnoreGroupLock(bool),
     LockGroups(bool),
@@ -163,6 +172,20 @@ impl Event {
                     mon_name: mon_name.to_string(),
                 })
             }
+
+            "activespecialv2" => {
+                let parts: Vec<&str> = data.split(',').collect();
+
+                let [workspaceid, workspace_name, mon_name] = parts.as_slice()
+                    else { return Err(Error::MalformedInput); };
+
+                Ok(Self::ActiveSpecialV2 {
+                    workspace_id: workspaceid.to_string(),
+                    workspace_name: workspace_name.to_string(),
+                    mon_name: mon_name.to_string(),
+                })
+            }
+
             "activelayout" => {
                 let (keyboard_name, layout_name) =
                     data.split_once(',').ok_or(Error::MalformedInput)?;
@@ -247,13 +270,24 @@ impl Event {
             "windowtitle" => Ok(Self::WindowTitle {
                 window_address: data.to_string(),
             }),
-            "ignoregrouplock" => Ok(Self::IgnoreGroupLock(
+            "windowtitlev2" => {
+                let mut parts = data.splitn(2, ',');
+
+                let window_address = parts.next().ok_or(Error::MalformedInput)?;
+                let window_title   = parts.next().ok_or(Error::MalformedInput)?;
+
+                Ok(Self::WindowTitleV2 {
+                    window_address: window_address.to_string(),
+                    window_title: window_title.to_string(),
+                })
+            }
+                "ignoregrouplock" => Ok(Self::IgnoreGroupLock(
                 data.parse::<u8>().map_err(|_err| Error::MalformedInput)? != 0u8,
             )),
             "lockgroups" => Ok(Self::LockGroups(
                 data.parse::<u8>().map_err(|_err| Error::MalformedInput)? != 0u8,
             )),
-            _ => Err(Error::UnknownEvent),
+            _ => Err(Error::UnknownEvent(event.to_string(), data.to_string())),
         }
     }
 }
@@ -300,8 +334,9 @@ impl EventListener {
     pub async fn new() -> Result<Self, Error> {
         let his = std::env::var("HYPRLAND_INSTANCE_SIGNATURE")
             .map_err(|_err| Error::NoInstanceSignature)?;
-
-        let socket2 = UnixStream::connect(format!("/tmp/hypr/{his}/.socket2.sock")).await?;
+        let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
+            .map_err(|_| Error::NoInstanceSignature)?;
+        let socket2 = UnixStream::connect(format!("{xdg_runtime}/hypr/{his}/.socket2.sock")).await?;
 
         Ok(Self {
             inner: FramedRead::new(socket2, EventDecoder::new()),

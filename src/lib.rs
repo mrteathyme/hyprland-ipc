@@ -1,6 +1,6 @@
-mod dispatch;
-mod error;
-mod event;
+pub mod dispatch;
+pub mod error;
+pub mod event;
 
 pub mod params;
 
